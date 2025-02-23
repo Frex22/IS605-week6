@@ -3,6 +3,7 @@
 #changing app/commands/__init to accomodate plugins
 import pkgutil
 import importlib
+import inspect
 from app.commands import CommandHandler
 from app.commands import Command
 class App:
@@ -27,8 +28,12 @@ class App:
                 for item_name in dir(plugin_module):
                     item = getattr(plugin_module, item_name)
                     try:
-                        if issubclass(item, (Command)):
-                            self.command_handler.register_command(plugin_name, item())
+                        if issubclass(item, (Command)) and item is not Command:
+                            sig = inspect.signature(item.__init__)
+                            if 'command_handler' in sig.parameters:
+                                self.command_handler.register_command(plugin_name, item(self.command_handler))
+                            else:       
+                                self.command_handler.register_command(plugin_name, item())
                     except TypeError:
                         continue
 
