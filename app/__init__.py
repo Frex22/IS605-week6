@@ -21,7 +21,7 @@ class App:
         """
         This method loads all plugins"""
         plugins_package = 'app.plugins'
-        for _, plugin_name, is_pkg in pkgutil.iterate_modules([plugins_package.replace('.', '/' )]):
+        for _, plugin_name, is_pkg in pkgutil.iter_modules([plugins_package.replace('.', '/' )]):
             if is_pkg:
                 plugin_module = importlib.import_module(f'{plugins_package}.{plugin_name}')
                 for item_name in dir(plugin_module):
