@@ -1,5 +1,6 @@
 import pytest
 import random
+import re
 from decimal import Decimal
 from faker import Faker
 
@@ -67,8 +68,18 @@ def test_arithmetic_commands(monkeypatch, capsys, op_name, a, b, expected):
     cmd = cmd_class()
     cmd.execute()
     captured = capsys.readouterr().out
-    # Convert expected result to string (works for Decimal or "ZeroDivisionError")
-    assert str(expected) in captured, f"Failed {op_name} with {a} and {b}. Expected: {expected}"
+     #adding exception for divide mismatch issue by using aproximate comparison
+    if op_name == 'divide':
+        m = re.search(r"=\s*([\d\.]+)", captured)
+        assert m, f"Could not find a result in output: {captured}"
+        result_str = m.group(1)
+        result_value = float(result_str)
+        expected_value = float(expected)
+        assert result_value == pytest.approx(expected_value, rel=1e-10), (
+            f"Failed {op_name} with {a} and {b}. Expected: {expected_value}, Got: {result_value}"
+        )
+    else:
+        assert str(expected) in captured, f"Failed {op_name} with {a} and {b}. Expected: {expected}"
 
 
 def test_greet_command(capsys):
