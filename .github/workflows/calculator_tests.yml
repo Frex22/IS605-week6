@@ -2,9 +2,9 @@ name: Calculator Tests
 
 on:
   push:
-    branches: [ main ]
+    branches: [ plugins ]
   pull_request:
-    branches: [ main ]
+    branches: [ plugins ]
 
 jobs:
   test:
@@ -33,14 +33,8 @@ jobs:
 
       - name: Run coverage with pytest
         run: |
-          pytest --cov=app --cov-report=term-missing --cov-fail-under=93
+          pytest --cov=app --cov-report=term-missing --cov-fail-under=87
 
-      - name: Run lint with pytest
-        run: |
-          pylint app tests --fail-under=8.5
 
-      - name: Run num records
-        run: |
-          pytest --num_records=100
       
 

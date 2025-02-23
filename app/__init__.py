@@ -4,6 +4,7 @@
 import pkgutil
 import importlib
 import inspect
+import os
 from app.commands import CommandHandler
 from app.commands import Command
 class App:
@@ -22,7 +23,10 @@ class App:
         """
         This method loads all plugins"""
         plugins_package = 'app.plugins'
-        for _, plugin_name, is_pkg in pkgutil.iter_modules([plugins_package.replace('.', '/' )]):
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        plugin_path = os.path.join(base_dir, 'app', 'plugins')
+
+        for _, plugin_name, is_pkg in pkgutil.iter_modules([plugin_path]):
             if is_pkg:
                 plugin_module = importlib.import_module(f'{plugins_package}.{plugin_name}')
                 for item_name in dir(plugin_module):
@@ -46,5 +50,3 @@ class App:
         print("Type 'Exit to quit the program")
         while True: #REPL Read-Eval-Print Loop
             self.command_handler.execute_command(input(">>> ").strip()) #strip removes leading and trailing whitespace
-
-
