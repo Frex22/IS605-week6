@@ -72,3 +72,4 @@ The idea behind this refactoring is to decouple the registration of commands (or
 ---
 
 In summary, by replacing the hardcoded command registrations with a dynamic plugin loader, you’re building a more scalable and maintainable architecture. This pattern leverages Python’s introspection capabilities to automatically find and load new command implementations, thereby promoting modularity and making it easier to extend the application in the future.
+
