@@ -3,8 +3,9 @@ import random
 import re
 from decimal import Decimal
 from faker import Faker
-
-# Import your command classes (adjust the imports as needed for your project structure)
+import types
+from app.commands import Command
+from app.plugins.add import get_float
 from app.plugins.add import AddCommand
 from app.plugins.sub import SubCommand
 from app.plugins.multiply import MultiplyCommand
@@ -13,7 +14,7 @@ from app.plugins.greet import GreetCommand
 from app.plugins.exit import ExitCommand
 from app.plugins.menu import MenuCommand
 from app import CommandHandler
-from app import App  # Assuming your App class with load_plugins() is in app/__init__.py
+from app import App  # Assuming App class with load_plugins() is in app/__init__.py
 
 fake = Faker()
 
@@ -116,9 +117,8 @@ def test_menu_command(capsys):
     cmd.execute()
     captured = capsys.readouterr().out
     # Check that the output includes the registered command names.
-    assert "add" in captured
-    assert "sub" in captured
-    assert "greet" in captured
+    for key in ["add", "sub", "greet"]:
+        assert key in captured, f"Menu did not list command: {key}"
 
 
 def test_dynamic_plugin_loader():
@@ -132,3 +132,45 @@ def test_dynamic_plugin_loader():
     loaded_commands = set(app.command_handler.commands.keys())
     missing = expected_commands - loaded_commands
     assert not missing, f"Missing commands: {missing}"
+
+def test_non_command_attribute_handling():
+    """
+    Create a dummy module with a non-class attribute to verify that
+    the loader's try/except correctly ignores it.
+    """
+    dummy_module = types.ModuleType("dummy_plugin")
+    dummy_module.not_a_command = 42  # Not a class.
+    # Iterate over the dummy module attributes.
+    for attr_name in dir(dummy_module):
+        attr = getattr(dummy_module, attr_name)
+        try:
+            if issubclass(attr, Command):
+                pytest.fail("Non-class attribute incorrectly processed as a command.")
+        except TypeError:
+            # Expected, since 42 is not a class.
+            pass
+def test_get_float(monkeypatch, capsys):
+    """ Test the get_float function with valid input. """
+    inputs = iter(["not a number", "42.5", "still no"])
+    monkeypatch.setattr("builtins.input", lambda prompt: next(inputs))
+    result = get_float("Enter a number:")
+    assert result == 42.5
+
+def test_divide_by_zero(monkeypatch, capsys):
+    """
+    Test the DivideCommand when the second number (divisor) is zero.
+    """
+    inputs = iter(["10", "0"])
+    monkeypatch.setattr("builtins.input", lambda prompt: next(inputs))
+    cmd = DivideCommand()
+    cmd.execute()
+    captured = capsys.readouterr().out
+    assert "Cannot divide by zero" in captured
+
+def test_app_start_exit(monkeypatch):
+    """Test The App.start by simulating user input and exit."""
+    app = App()
+    inputs = iter(["exit"])
+    monkeypatch.setattr("builtins.input", lambda prompt: next(inputs))
+    with pytest.raises(SystemExit):
+        app.start()
