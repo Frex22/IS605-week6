@@ -15,9 +15,17 @@ from app.plugins.exit import ExitCommand
 from app.plugins.menu import MenuCommand
 from app import CommandHandler
 from app import App  # Assuming App class with load_plugins() is in app/__init__.py
+from unittest.mock import patch, MagicMock
+import os
+import logging
+
 
 fake = Faker()
 
+@pytest.fixture
+def app_instance():
+    """Fixture to create a fresh App instance for each test."""
+    return App()
 
 def generate_arithmetic_test_data(num_records=10):
     """
@@ -166,6 +174,87 @@ def test_divide_by_zero(monkeypatch, capsys):
     cmd.execute()
     captured = capsys.readouterr().out
     assert "Cannot divide by zero" in captured
+
+def test_configure_logging_existing_config(app_instance, monkeypatch):
+    """Test logging configuration when logging.conf exists."""
+    monkeypatch.setattr("os.path.exists", lambda path: True)  # Simulate config file exists
+    with patch("logging.config.fileConfig") as mock_file_config:
+        app_instance.configure_logging()
+        mock_file_config.assert_called_once()
+
+def test_configure_logging_default_config(app_instance, monkeypatch):
+    """Test default logging configuration when logging.conf is missing."""
+    monkeypatch.setattr("os.path.exists", lambda path: False)  # Simulate config file missing
+    with patch("logging.basicConfig") as mock_basic_config:
+        app_instance.configure_logging()
+        mock_basic_config.assert_called_once()
+
+def test_load_environment_variables(app_instance, monkeypatch):
+    """Test environment variable loading."""
+    mock_env = {"TEST_VAR": "123", "ENV": "PROD"}
+    monkeypatch.setattr(os, "environ", mock_env)
+    env_vars = app_instance.load_environment_variables()
+    assert env_vars["TEST_VAR"] == "123"
+    assert env_vars["ENV"] == "PROD"
+
+
+
+def test_get_environment_variable(app_instance, monkeypatch):
+    """Test fetching specific environment variables."""
+    monkeypatch.setattr(app_instance, "settings", {"ENV": "TEST"})
+    assert app_instance.get_environment_variable("ENV") == "TEST"
+    assert app_instance.get_environment_variable("NON_EXISTENT") is None
+
+def test_load_plugins_successful_registration(app_instance, monkeypatch):
+    """Test that plugins load successfully and commands get registered."""
+    mock_command = MagicMock()
+    mock_command_instance = mock_command.return_value
+    mock_command_instance.__class__.__name__ = "MockCommand"
+
+    mock_module = types.ModuleType("app.plugins.mock_plugin")
+    setattr(mock_module, "MockCommand", mock_command)
+
+    monkeypatch.setattr("pkgutil.iter_modules", lambda path: iter([("mock_plugin", None, True)]))
+    monkeypatch.setattr("importlib.import_module", lambda name: mock_module)
+
+    with patch.object(app_instance.command_handler, "register_command") as mock_register:
+        app_instance.load_plugins()
+        mock_register.assert_called()  # Ensures command registration was attempted
+
+def test_load_plugins_failure_during_import(app_instance, monkeypatch, caplog):
+    """Test handling of plugin import failures."""
+    def mock_import_fail(name):
+        raise ImportError("Simulated import failure")
+
+    monkeypatch.setattr("importlib.import_module", mock_import_fail)
+    with caplog.at_level(logging.ERROR):
+        app_instance.load_plugins()
+    assert "Failed to load plugin" in caplog.text  # Ensures failure was logged
+
+def test_load_plugins_non_command_class_ignored(app_instance, monkeypatch):
+    """Test that non-command classes or attributes are ignored."""
+    mock_module = types.ModuleType("mock_plugin")
+    mock_module.not_a_command = 42  # Not a class
+    monkeypatch.setattr("importlib.import_module", lambda name: mock_module)
+
+    with patch.object(app_instance.command_handler, "register_command") as mock_register:
+        app_instance.load_plugins()
+        mock_register.assert_not_called()  # Ensure no invalid commands were registered
+
+def test_start_invalid_command_handling(app_instance, monkeypatch, capsys):
+    """Test execution of an invalid command logs an error but does not crash."""
+    inputs = iter(["invalid_command", "exit"])
+    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+
+    with pytest.raises(SystemExit):
+        app_instance.start()
+
+
+    with patch.object(app_instance.command_handler, "execute_command", side_effect=Exception("Simulated error")):
+        app_instance.start()
+
+    captured = capsys.readouterr().out
+    assert "An error occurred while executing command" in captured
 
 def test_app_start_exit(monkeypatch):
     """Test The App.start by simulating user input and exit."""
