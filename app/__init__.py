@@ -90,9 +90,9 @@ class App:
                     except Exception as e:
                         logging.error(f'Failed to register command: {item_name} in plugin: {plugin_name}')
                         logging.error(e)
-    logging.info('Completed loading plugins')
+                logging.info('Completed loading plugins')
 
-            
+      
     def start(self):
         """
         This method starts the application

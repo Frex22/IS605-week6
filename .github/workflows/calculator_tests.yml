@@ -2,9 +2,9 @@ name: Calculator Tests
 
 on:
   push:
-    branches: [ plugins ]
+    branches: [ main ]
   pull_request:
-    branches: [ plugins ]
+    branches: [ main ]
 
 jobs:
   test:
@@ -34,7 +34,7 @@ jobs:
       - name: Run coverage with pytest
         run: |
           pytest --cov=app --cov-report=term-missing --cov-fail-under=90
-        
+     
 
 
       
