@@ -34,8 +34,10 @@ class App:
         if os.path.exists(logging_conf_path):
             logging.config.fileConfig(logging_conf_path, disable_existing_loggers=False)
         else:
-            logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        logging.info('Logging Configured')
+            #write logs to app.log file
+            logging.basicConfig(filename='logs/app.log', level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            logging.getLogger('app').setLevel(logging.DEBUG)
+            logging.getLogger('app').addHandler(logging.StreamHandler())    
 
     def load_environment_variables(self):
         """

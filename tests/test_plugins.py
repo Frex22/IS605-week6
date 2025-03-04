@@ -32,29 +32,32 @@ def generate_arithmetic_test_data(num_records=10):
     Dynamically generate test cases for arithmetic commands using Faker.
     Each record is a tuple: (operation_name, a, b, expected_result).
     """
-    # Define operations mapping using lambda functions for simplicity.
+def generate_arithmetic_test_data(num_records_per_op=3):
+    """
+    Generate test cases ensuring each operation is tested multiple times.
+    """
     operations = {
         'add': (lambda a, b: a + b),
         'sub': (lambda a, b: a - b),
         'multiply': (lambda a, b: a * b),
         'divide': (lambda a, b: a / b if b != 0 else "ZeroDivisionError")
     }
+    
     test_data = []
-    for _ in range(num_records):
-        # Generate random two-digit numbers for a and b.
-        a = Decimal(fake.random_number(digits=2))
-        b = Decimal(fake.random_number(digits=2))
-        # Randomly select an operation.
-        op_name = random.choice(list(operations.keys()))
-        op_func = operations[op_name]
-        # For division, ensure b is not zero; if it is, use 1.
-        if op_name == 'divide' and b == 0:
-            b = Decimal('1')
-        try:
+    
+    # Generate fixed number of test cases for each operation
+    for op_name, op_func in operations.items():
+        for _ in range(num_records_per_op):
+            a = Decimal(fake.random_number(digits=2))
+            b = Decimal(fake.random_number(digits=2))
+            
+            # For division, ensure b is not zero
+            if op_name == 'divide' and b == 0:
+                b = Decimal('1')
+                
             expected = op_func(a, b)
-        except ZeroDivisionError:
-            expected = "ZeroDivisionError"
-        test_data.append((op_name, a, b, expected))
+            test_data.append((op_name, a, b, expected))
+    
     return test_data
 
 
@@ -102,14 +105,17 @@ def test_greet_command(capsys):
     assert "hello" in captured.lower()
 
 
-def test_exit_command():
+def test_exit_command(monkeypatch):
     """
     Test that the exit command raises SystemExit.
     """
+    mock_exit = MagicMock(side_effect=SystemExit)
+    monkeypatch.setattr("sys.exit", mock_exit)
+
     cmd = ExitCommand()
     with pytest.raises(SystemExit):
         cmd.execute()
-
+    mock_exit.assert_called_once_with("Exiting the program...")
 
 def test_menu_command(capsys):
     """
@@ -205,24 +211,28 @@ def test_get_environment_variable(app_instance, monkeypatch):
     assert app_instance.get_environment_variable("ENV") == "TEST"
     assert app_instance.get_environment_variable("NON_EXISTENT") is None
 
-# def test_load_plugins_successful_registration(app_instance, monkeypatch):
-#     """Test that plugins load successfully and commands get registered."""
-#     mock_command = MagicMock()
-#     mock_command_instance = mock_command.return_value
-#     mock_command_instance.__class__.__name__ = "MockCommand"
-
-#     mock_module = types.ModuleType("app.plugins.mock_plugin")
-#     setattr(mock_module, "MockCommand", mock_command)
-
-#     monkeypatch.setattr("pkgutil.iter_modules", lambda path: iter([("mock_plugin", None, True)]))
-#     monkeypatch.setattr("importlib.import_module", lambda name: mock_module)
-
-#     with patch.object(app_instance.command_handler, "register_command") as mock_register:
-#         app_instance.load_plugins()
+def test_load_plugins_successful_registration(app_instance, monkeypatch):
+    """Test that plugins load successfully and commands get registered."""
+    # Create a mock plugin module with a Command class
+    class MockCommand(Command):
+        def execute(self):
+            pass
+    
+    mock_module = types.ModuleType("mock_plugin")
+    mock_module.MockCommand = MockCommand
+    
+    # Mock the plugin discovery and import
+    monkeypatch.setattr("pkgutil.iter_modules", 
+                        lambda path: [(None, "mock_plugin", True)])
+    monkeypatch.setattr("importlib.import_module", 
+                        lambda name: mock_module)
+    
+    # Spy on the register_command method
+    with patch.object(app_instance.command_handler, "register_command") as mock_register:
+        app_instance.load_plugins()
         
-#         print(f"Loaded commands: {app_instance.command_handler.commands.keys()}")
-#           # Ensures command registration was attempted
-#         assert mock_register.called, "Expected 'register_command' to have been called."
+        # Check if register_command was called at least once
+        assert mock_register.called, "register_command should have been called"
 
 def test_load_plugins_failure_during_import(app_instance, monkeypatch, caplog):
     """Test handling of plugin import failures."""
@@ -244,20 +254,54 @@ def test_load_plugins_non_command_class_ignored(app_instance, monkeypatch):
         app_instance.load_plugins()
         mock_register.assert_not_called()  # Ensure no invalid commands were registered
 
-# def test_start_invalid_command_handling(app_instance, monkeypatch, capsys):
-#     """Test execution of an invalid command logs an error but does not crash."""
-#     inputs = iter(["invalid_command", "exit"])
-#     monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+def test_command_handler_execute_command(monkeypatch, capsys):
+    """
+    Test that execute_command properly executes commands or handles missing commands.
+    """
+    # Create a CommandHandler instance
+    handler = CommandHandler()
+    
+    # Create a mock command that we can verify was executed
+    mock_command = MagicMock()
+    handler.register_command("existing", mock_command)
+    
+    # Test successful execution
+    handler.execute_command("existing")
+    mock_command.execute.assert_called_once()
+    
+    # Test KeyError handling for non-existent command
+    handler.execute_command("non_existent")
+    captured = capsys.readouterr().out
+    assert "Command 'non_existent' not found" in captured
 
-#     with pytest.raises(SystemExit):
-#         app_instance.start()
-
-
-#     with patch.object(app_instance.command_handler, "execute_command", side_effect=Exception("Simulated error")):
-#         app_instance.start()
-
-#     captured = capsys.readouterr().out
-#     assert "An error occurred while executing command" in captured
+def test_load_plugins_command_registration_exception(app_instance, monkeypatch, caplog):
+    """Test handling of exceptions during command registration."""
+    
+    # Create a mock command class that will raise an exception when instantiated
+    class BrokenCommand(Command):
+        def __init__(self):
+            raise Exception("Simulated command instantiation error")
+        
+        def execute(self):
+            pass
+    
+    # Create a mock module with our problematic command
+    mock_module = types.ModuleType("app.plugins.broken_plugin")
+    setattr(mock_module, "BrokenCommand", BrokenCommand)
+    
+    # Mock the plugin discovery and import
+    monkeypatch.setattr("pkgutil.iter_modules", 
+                      lambda path: [(None, "broken_plugin", True)])
+    monkeypatch.setattr("importlib.import_module", 
+                      lambda name: mock_module)
+    
+    # Capture logs at ERROR level
+    with caplog.at_level(logging.ERROR):
+        app_instance.load_plugins()
+    
+    # Verify the error was logged
+    assert "Failed to register command" in caplog.text
+    assert "broken_plugin" in caplog.text
 
 def test_app_start_exit(monkeypatch):
     """Test The App.start by simulating user input and exit."""
